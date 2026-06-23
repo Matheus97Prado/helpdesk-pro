@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}HelpDesk{% endblock %} — HelpDesk Pro</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body class="sidebar-expanded" id="appBody">
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar">
+    <!-- Logo -->
+    <div class="sidebar-logo">
+        <div class="logo-icon">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
+                      stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        </div>
+        <span class="logo-text">HelpDesk Pro</span>
+    </div>
+
+    <!-- Toggle button -->
+    <button class="sidebar-toggle" id="sidebarToggle" title="Recolher menu">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+        </svg>
+    </button>
+
+    <!-- Nav sections -->
+    <nav class="sidebar-nav" id="sidebarNav">
+
+        <!-- Dashboard -->
+        <div class="nav-section">
+            <div class="nav-section-label">DASHBOARDS</div>
+            <a href="{{ url_for('dashboard') }}"
+               class="nav-item {% if request.endpoint == 'dashboard' %}active{% endif %}"
+               title="Fluxo de Atendimento">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                        <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Fluxo de Atendimento</span>
+            </a>
+        </div>
+
+        <!-- Tickets -->
+        <div class="nav-section">
+            <div class="nav-section-label">TICKETS</div>
+            <a href="{{ url_for('novo_chamado') }}"
+               class="nav-item {% if request.endpoint == 'novo_chamado' %}active{% endif %}"
+               title="Abrir Chamado">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                        <polyline points="14 2 14 8 20 8"/>
+                        <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Abrir Chamado</span>
+            </a>
+            <a href="{{ url_for('dashboard') }}"
+               class="nav-item"
+               title="Listagem de Tickets">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+                        <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+                        <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Listagem de Tickets</span>
+            </a>
+        </div>
+
+        <!-- Cadastros -->
+        <div class="nav-section">
+            <div class="nav-section-label">CADASTROS</div>
+            <a href="{{ url_for('clientes') }}"
+               class="nav-item {% if request.endpoint in ['clientes', 'novo_cliente'] %}active{% endif %}"
+               title="Clientes">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Clientes</span>
+            </a>
+            <a href="{{ url_for('novo_cliente') }}"
+               class="nav-item {% if request.endpoint == 'novo_cliente' %}active{% endif %}"
+               title="Novo Cliente">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Novo Cliente</span>
+            </a>
+        </div>
+
+        <!-- Atendentes -->
+        <div class="nav-section">
+            <div class="nav-section-label">EQUIPE</div>
+            <a href="{{ url_for('atendentes') }}"
+               class="nav-item {% if request.endpoint in ['atendentes', 'novo_atendente'] %}active{% endif %}"
+               title="Atendentes">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                        <circle cx="9" cy="7" r="4"/>
+                        <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Atendentes</span>
+            </a>
+            <a href="{{ url_for('novo_atendente') }}"
+               class="nav-item {% if request.endpoint == 'novo_atendente' %}active{% endif %}"
+               title="Novo Atendente">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M16 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+                        <circle cx="8.5" cy="7" r="4"/>
+                        <line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/>
+                    </svg>
+                </span>
+                <span class="nav-label">Novo Atendente</span>
+            </a>
+        </div>
+
+        <!-- Configurações -->
+        <div class="nav-section">
+            <div class="nav-section-label">CONFIGURAÇÕES</div>
+            <a href="{{ url_for('config_email') }}"
+               class="nav-item {% if request.endpoint == 'config_email' %}active{% endif %}"
+               title="Integração de E-mail">
+                <span class="nav-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                        <polyline points="22,6 12,13 2,6"/>
+                    </svg>
+                </span>
+                <span class="nav-label">E-mail → Ticket</span>
+            </a>
+        </div>
+
+    </nav>
+
+    <!-- User Footer -->
+    <div class="sidebar-footer">
+        <div class="user-avatar" title="Matheus Prado">M</div>
+        <div class="user-info">
+            <span class="user-name">Matheus Prado</span>
+            <span class="user-role">Administrador</span>
+        </div>
+    </div>
+</aside>
+
+<!-- Main Content -->
+<div class="main-wrapper" id="mainWrapper">
+
+    <!-- Topbar -->
+    <header class="topbar">
+        <div class="topbar-left">
+            <button class="topbar-toggle-btn" id="topbarToggle" title="Menu">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <line x1="3" y1="6" x2="21" y2="6"/>
+                    <line x1="3" y1="12" x2="21" y2="12"/>
+                    <line x1="3" y1="18" x2="21" y2="18"/>
+                </svg>
+            </button>
+            <div class="breadcrumb-block">
+                <div class="page-title">{% block page_title %}Dashboard{% endblock %}</div>
+                <div class="breadcrumb">{% block breadcrumb %}Início{% endblock %}</div>
+            </div>
+        </div>
+        <div class="topbar-center">
+            <div class="topbar-search">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input type="text" placeholder="Buscar chamados, clientes..." class="search-input" id="globalSearch">
+            </div>
+        </div>
+        <div class="topbar-right">
+            <a href="{{ url_for('novo_chamado') }}" class="btn btn-primary">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M12 5v14M5 12h14"/>
+                </svg>
+                Novo Chamado
+            </a>
+            <div class="topbar-icon-btn" title="Notificações">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
+                </svg>
+            </div>
+            <div class="topbar-user">
+                <div class="user-avatar-sm">M</div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            <div class="flash-container">
+            {% for category, message in messages %}
+                <div class="flash flash-{{ category }}">
+                    <div class="flash-content">
+                        {% if category == 'success' %}
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                            <polyline points="20 6 9 17 4 12"/>
+                        </svg>
+                        {% endif %}
+                        {{ message }}
+                    </div>
+                    <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+                </div>
+            {% endfor %}
+            </div>
+        {% endif %}
+    {% endwith %}
+
+    <!-- Page Content -->
+    <main class="content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="page-footer">
+        HelpDesk Pro &copy; 2026 — Sistema de Gestão de Chamados
+    </footer>
+</div>
+
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>

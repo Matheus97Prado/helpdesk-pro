@@ -1,0 +1,184 @@
+{% extends "base.html" %}
+
+{% block title %}Configuração de E-mail{% endblock %}
+{% block page_title %}Integração de E-mail{% endblock %}
+{% block breadcrumb %}Início &rsaquo; Configurações &rsaquo; E-mail{% endblock %}
+
+{% block content %}
+<div class="form-page" style="max-width:800px">
+
+    <!-- Status banner -->
+    <div class="email-status-banner {% if config.active %}banner-active{% else %}banner-inactive{% endif %}">
+        <div class="banner-left">
+            {% if config.active %}
+            <div class="status-led led-green"></div>
+            <div>
+                <strong>Monitoramento ativo</strong>
+                <div class="banner-sub">Verificando {{ config.email_user }} a cada {{ config.check_interval }} min</div>
+            </div>
+            {% else %}
+            <div class="status-led led-gray"></div>
+            <div>
+                <strong>Monitoramento inativo</strong>
+                <div class="banner-sub">Configure e ative abaixo para receber tickets por e-mail</div>
+            </div>
+            {% endif %}
+        </div>
+        {% if config.last_check %}
+        <div class="banner-right">
+            Última verificação: {{ config.last_check[:16] }}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Config form -->
+    <div class="form-card" style="margin-top:18px">
+        <div class="form-card-header">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            <h2>Caixa de Entrada — suporte@intermidiasp.com.br</h2>
+        </div>
+
+        <form method="POST" action="{{ url_for('config_email') }}" class="helpdesk-form">
+
+            <div class="info-box">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                <span>
+                    Quando um cliente enviar um e-mail para <strong>{{ config.email_user or 'suporte@intermidiasp.com.br' }}</strong>,
+                    o sistema criará automaticamente um ticket no kanban com status <em>A Fazer</em>.
+                    O cliente é cadastrado automaticamente se ainda não existir.
+                </span>
+            </div>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="imap_host">Servidor IMAP <span class="required">*</span></label>
+                    <input type="text" id="imap_host" name="imap_host" required
+                           value="{{ config.imap_host or '' }}"
+                           placeholder="imap.gmail.com / imap.outlook.com" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="imap_port">Porta IMAP</label>
+                    <select id="imap_port" name="imap_port" class="form-input">
+                        <option value="993" {% if config.imap_port == 993 %}selected{% endif %}>993 — SSL (recomendado)</option>
+                        <option value="143" {% if config.imap_port == 143 %}selected{% endif %}>143 — STARTTLS</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="email_user">E-mail de suporte <span class="required">*</span></label>
+                    <input type="email" id="email_user" name="email_user" required
+                           value="{{ config.email_user or '' }}"
+                           placeholder="suporte@intermidiasp.com.br" class="form-input">
+                </div>
+                <div class="form-group">
+                    <label for="email_password">Senha / App Password</label>
+                    <div class="input-password-wrap">
+                        <input type="password" id="email_password" name="email_password"
+                               placeholder="Deixe em branco para manter a atual" class="form-input">
+                        <button type="button" class="toggle-pass" onclick="togglePass('email_password')">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                                <circle cx="12" cy="12" r="3"/>
+                            </svg>
+                        </button>
+                    </div>
+                    <div class="input-hint">Para Gmail, use uma <a href="https://myaccount.google.com/apppasswords" target="_blank">App Password</a></div>
+                </div>
+            </div>
+
+            <div class="form-row two-cols">
+                <div class="form-group">
+                    <label for="check_interval">Verificar a cada (minutos)</label>
+                    <select id="check_interval" name="check_interval" class="form-input">
+                        <option value="2"  {% if config.check_interval == 2  %}selected{% endif %}>2 minutos</option>
+                        <option value="5"  {% if config.check_interval == 5  or not config.check_interval %}selected{% endif %}>5 minutos</option>
+                        <option value="10" {% if config.check_interval == 10 %}selected{% endif %}>10 minutos</option>
+                        <option value="30" {% if config.check_interval == 30 %}selected{% endif %}>30 minutos</option>
+                    </select>
+                </div>
+                <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:4px">
+                    <label class="toggle-switch-label">
+                        <div class="toggle-wrap">
+                            <input type="checkbox" name="active" id="active"
+                                   {% if config.active %}checked{% endif %}>
+                            <span class="toggle-slider"></span>
+                        </div>
+                        <span class="toggle-text">Ativar monitoramento automático</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-actions" style="border-top:1px solid var(--gray-100);padding-top:16px;margin-top:4px">
+                <form method="POST" action="{{ url_for('verificar_emails') }}" style="margin:0">
+                    <button type="submit" class="btn btn-ghost">
+                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="23 4 23 10 17 10"/>
+                            <path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/>
+                        </svg>
+                        Verificar agora
+                    </button>
+                </form>
+                <button type="submit" class="btn btn-primary">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v14a2 2 0 01-2 2z"/>
+                        <polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/>
+                    </svg>
+                    Salvar configuração
+                </button>
+            </div>
+        </form>
+    </div>
+
+    <!-- How it works -->
+    <div class="how-it-works">
+        <h3>Como funciona</h3>
+        <div class="steps-grid">
+            <div class="step">
+                <div class="step-num">1</div>
+                <div class="step-body">
+                    <strong>Cliente envia e-mail</strong>
+                    <p>Para suporte@intermidiasp.com.br com qualquer assunto.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">2</div>
+                <div class="step-body">
+                    <strong>Sistema detecta</strong>
+                    <p>O monitoramento IMAP lê os e-mails não lidos a cada {{ config.check_interval or 5 }} minutos.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">3</div>
+                <div class="step-body">
+                    <strong>Ticket criado</strong>
+                    <p>Um chamado é aberto com o assunto como título e o corpo como descrição.</p>
+                </div>
+            </div>
+            <div class="step">
+                <div class="step-num">4</div>
+                <div class="step-body">
+                    <strong>Cliente cadastrado</strong>
+                    <p>Se o remetente for novo, ele é cadastrado automaticamente.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+<script>
+function togglePass(id) {
+    const inp = document.getElementById(id);
+    inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+</script>
+{% endblock %}

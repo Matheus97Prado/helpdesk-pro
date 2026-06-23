@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Fluxo de Atendimento{% endblock %}
+{% block breadcrumb %}Início &rsaquo; Dashboard{% endblock %}
+
+{% block content %}
+
+<!-- Stats Bar -->
+<div class="stats-bar">
+    <div class="stat-card">
+        <div class="stat-number">{{ stats.total }}</div>
+        <div class="stat-label">Total de Chamados</div>
+    </div>
+    <div class="stat-card stat-danger">
+        <div class="stat-number">{{ stats.a_fazer }}</div>
+        <div class="stat-label">A Fazer</div>
+    </div>
+    <div class="stat-card stat-success">
+        <div class="stat-number">{{ stats.atendendo }}</div>
+        <div class="stat-label">Em Atendimento</div>
+    </div>
+    <div class="stat-card stat-warning">
+        <div class="stat-number">{{ stats.pausado }}</div>
+        <div class="stat-label">Pausados</div>
+    </div>
+    <div class="stat-card stat-resolved">
+        <div class="stat-number">{{ stats.resolvido }}</div>
+        <div class="stat-label">Resolvidos</div>
+    </div>
+</div>
+
+<!-- Kanban Board -->
+<div class="kanban-board">
+
+    {% set columns = [
+        ('a_fazer',   'A FAZER',   'header-danger',   '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>'),
+        ('atendendo', 'ATENDENDO', 'header-success',  '<polyline points="20 6 9 17 4 12"/>'),
+        ('pausado',   'PAUSADOS',  'header-warning',  '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'),
+        ('resolvido', 'RESOLVIDOS','header-resolved', '<path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/>')
+    ] %}
+
+    {% for status_key, label, header_class, icon_path in columns %}
+    <div class="kanban-column" data-status="{{ status_key }}">
+        <div class="column-header {{ header_class }}">
+            <div class="column-header-left">
+                <div class="column-icon">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5">
+                        {{ icon_path }}
+                    </svg>
+                </div>
+                <span>{{ label }}</span>
+            </div>
+            <span class="column-count">{{ tickets_by_status[status_key]|length }}</span>
+        </div>
+        <div class="column-body" id="col-{{ status_key }}">
+            {% for ticket in tickets_by_status[status_key] %}
+            <div class="ticket-card" draggable="true" data-id="{{ ticket.id }}" data-status="{{ ticket.status }}">
+                <div class="ticket-card-header">
+                    <a href="{{ url_for('chamado_detalhe', ticket_id=ticket.id) }}" class="ticket-id">#{{ ticket.id }}</a>
+                    <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority|upper }}</span>
+                </div>
+                <a href="{{ url_for('chamado_detalhe', ticket_id=ticket.id) }}" class="ticket-title">
+                    {{ ticket.title }}
+                </a>
+                <div class="ticket-meta">
+                    <div class="ticket-client">
+                        <div class="client-avatar">{{ ticket.client_name[0] if ticket.client_name else '?' }}</div>
+                        <span>{{ ticket.company or ticket.client_name }}</span>
+                    </div>
+                    <span class="ticket-date">{{ ticket.created_at[:10] if ticket.created_at else '' }}</span>
+                </div>
+                {% if ticket.category %}
+                <div class="ticket-category">
+                    <span class="category-tag">{{ ticket.category }}</span>
+                </div>
+                {% endif %}
+                <div class="ticket-actions">
+                    <select class="status-select" onchange="updateStatus({{ ticket.id }}, this.value, this)">
+                        <option value="a_fazer"   {% if ticket.status == 'a_fazer'   %}selected{% endif %}>A Fazer</option>
+                        <option value="atendendo" {% if ticket.status == 'atendendo' %}selected{% endif %}>Atendendo</option>
+                        <option value="pausado"   {% if ticket.status == 'pausado'   %}selected{% endif %}>Pausado</option>
+                        <option value="resolvido" {% if ticket.status == 'resolvido' %}selected{% endif %}>Resolvido</option>
+                    </select>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not tickets_by_status[status_key] %}
+            <div class="empty-col">Nenhum chamado</div>
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Clientes{% endblock %}
+{% block page_title %}Clientes{% endblock %}
+{% block breadcrumb %}Início &rsaquo; Clientes{% endblock %}
+
+{% block content %}
+<div class="list-page">
+  <div class="list-header">
+    <div class="list-header-left">
+      <h2>{{ clients|length }} cliente(s) cadastrado(s)</h2>
+      <div class="client-search">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="clientFilter" placeholder="Filtrar por nome, empresa ou cidade..."
+               oninput="filterClients(this.value)">
+      </div>
+    </div>
+    <a href="{{ url_for('novo_cliente') }}" class="btn btn-primary">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+        <path d="M12 5v14M5 12h14"/>
+      </svg>
+      Novo Cliente
+    </a>
+  </div>
+
+  <div class="clients-grid" id="clientsGrid">
+    {% for client in clients %}
+    <div class="client-card" data-search="{{ (client.name ~ ' ' ~ (client.company or '') ~ ' ' ~ (client.city or ''))|lower }}">
+
+      <div class="client-card-top">
+        <div class="client-avatar-area">
+          <div class="client-avatar-lg {% if client.type == 'PF' %}avatar-pf{% endif %}">
+            {{ client.name[0]|upper }}
+          </div>
+          <div class="client-type-badge">{{ client.type or 'PJ' }}</div>
+        </div>
+        <div class="client-main-info">
+          <div class="client-name">{{ client.name }}</div>
+          {% if client.company %}
+            <div class="client-company">{{ client.company }}</div>
+          {% endif %}
+          {% if client.cnpj %}
+            <div class="client-doc">{{ client.cnpj }}</div>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="client-card-body">
+        {% if client.email %}
+        <div class="client-info-row">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+            <polyline points="22,6 12,13 2,6"/>
+          </svg>
+          <a href="mailto:{{ client.email }}" class="client-link">{{ client.email }}</a>
+        </div>
+        {% endif %}
+
+        {% if client.phone %}
+        <div class="client-info-row">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 9.8a19.79 19.79 0 01-3.07-8.67A2 2 0 012 .84h3a2 2 0 012 1.72c.127.96.361 1.903.7 2.81a2 2 0 01-.45 2.11L6.09 8.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0122 16.92z"/>
+          </svg>
+          {{ client.phone }}{% if client.phone2 %} · {{ client.phone2 }}{% endif %}
+        </div>
+        {% endif %}
+
+        {% if client.city %}
+        <div class="client-info-row">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0118 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+          {{ client.city }}{% if client.state %} — {{ client.state }}{% endif %}
+          {% if client.street %}<span class="address-detail">, {{ client.street }}{% if client.number %}, {{ client.number }}{% endif %}</span>{% endif %}
+        </div>
+        {% endif %}
+
+        {% if client.website %}
+        <div class="client-info-row">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="2" y1="12" x2="22" y2="12"/>
+            <path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+          </svg>
+          <a href="{{ client.website }}" target="_blank" class="client-link">{{ client.website|replace('https://','') }}</a>
+        </div>
+        {% endif %}
+
+        {% if client.notes %}
+        <div class="client-notes">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          {{ client.notes[:80] }}{% if client.notes|length > 80 %}...{% endif %}
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="client-card-footer">
+        <div class="ticket-badges">
+          <span class="badge badge-total">{{ client.total_tickets or 0 }} chamados</span>
+          {% if client.open_tickets and client.open_tickets > 0 %}
+            <span class="badge badge-open">{{ client.open_tickets }} abertos</span>
+          {% else %}
+            <span class="badge badge-ok">Sem pendências</span>
+          {% endif %}
+        </div>
+        <div class="client-actions">
+          <a href="{{ url_for('editar_cliente', client_id=client.id) }}"
+             class="btn btn-ghost btn-xs" title="Editar cliente">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/>
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/>
+            </svg>
+            Editar
+          </a>
+          <a href="{{ url_for('novo_chamado') }}?client={{ client.id }}"
+             class="btn btn-primary btn-xs" title="Abrir chamado">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M12 5v14M5 12h14"/>
+            </svg>
+            Chamado
+          </a>
+        </div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+
+  <div id="emptyFilter" style="display:none" class="empty-state" style="padding:40px">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" stroke-width="1.5">
+      <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+    <h3>Nenhum cliente encontrado</h3>
+    <p>Tente outro termo de busca.</p>
+  </div>
+
+  {% if not clients %}
+  <div class="empty-state">
+    <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#D1D5DB" stroke-width="1.5">
+      <path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/>
+      <circle cx="9" cy="7" r="4"/>
+      <path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/>
+    </svg>
+    <h3>Nenhum cliente cadastrado</h3>
+    <p>Cadastre o primeiro cliente para começar.</p>
+    <a href="{{ url_for('novo_cliente') }}" class="btn btn-primary">Cadastrar Cliente</a>
+  </div>
+  {% endif %}
+</div>
+
+<script>
+function filterClients(q) {
+  q = q.toLowerCase().trim();
+  const cards  = document.querySelectorAll('.client-card');
+  const empty  = document.getElementById('emptyFilter');
+  let visible  = 0;
+  cards.forEach(c => {
+    const match = !q || c.dataset.search.includes(q);
+    c.style.display = match ? '' : 'none';
+    if (match) visible++;
+  });
+  empty.style.display = (q && visible === 0) ? 'block' : 'none';
+}
+</script>
+{% endblock %}

@@ -1,0 +1,256 @@
+{% extends "base.html" %}
+
+{% block title %}Chamado #{{ ticket.id }}{% endblock %}
+{% block page_title %}Chamado #{{ ticket.id }}{% endblock %}
+{% block breadcrumb %}
+  Início &rsaquo; <a href="{{ url_for('dashboard') }}">Dashboard</a> &rsaquo; #{{ ticket.id }}
+{% endblock %}
+
+{% block content %}
+<div class="detail-layout">
+
+    <!-- ── Main Panel ───────────────────────── -->
+    <div class="detail-main">
+
+        <!-- Title & description -->
+        <div class="detail-card">
+            <div class="detail-card-header">
+                <div class="detail-title-row">
+                    <h2 class="detail-title">{{ ticket.title }}</h2>
+                    <span class="priority-badge priority-{{ ticket.priority }}">{{ ticket.priority|upper }}</span>
+                </div>
+                <div class="detail-meta-row">
+                    <span class="status-pill status-{{ ticket.status }}">
+                        {{ {'a_fazer':'A Fazer','atendendo':'Atendendo','pausado':'Pausado','resolvido':'Resolvido'}[ticket.status] }}
+                    </span>
+                    {% if ticket.category %}
+                        <span class="category-tag">{{ ticket.category }}</span>
+                    {% endif %}
+                    {% if ticket.origin == 'email' %}
+                        <span class="category-tag" style="background:#dbeafe;color:#1d4ed8">
+                            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle">
+                                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+                                <polyline points="22,6 12,13 2,6"/>
+                            </svg>
+                            Via E-mail
+                        </span>
+                    {% endif %}
+                    <span class="detail-date">Aberto em {{ ticket.created_at[:10] if ticket.created_at else 'N/A' }}</span>
+                </div>
+            </div>
+            <div class="detail-description">
+                <h3>Descrição</h3>
+                <p>{{ ticket.description or 'Sem descrição.' }}</p>
+            </div>
+        </div>
+
+        <!-- Comments -->
+        <div class="detail-card">
+            <h3 class="section-title">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+                </svg>
+                Comentários e Histórico ({{ comments|length }})
+            </h3>
+
+            <div class="comments-list">
+                {% for comment in comments %}
+                {% if comment.is_system %}
+                <div class="comment-item comment-system">
+                    <div class="comment-system-icon">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="17 1 21 5 17 9"/>
+                            <path d="M3 11V9a4 4 0 014-4h14"/>
+                            <polyline points="7 23 3 19 7 15"/>
+                            <path d="M21 13v2a4 4 0 01-4 4H3"/>
+                        </svg>
+                    </div>
+                    <div class="comment-body">
+                        <span class="comment-system-text">{{ comment.content }}</span>
+                        <span class="comment-date">{{ comment.created_at[:16] if comment.created_at else '' }}</span>
+                    </div>
+                </div>
+                {% else %}
+                <div class="comment-item">
+                    <div class="comment-avatar">{{ comment.author[0]|upper }}</div>
+                    <div class="comment-body">
+                        <div class="comment-header">
+                            <strong>{{ comment.author }}</strong>
+                            <span class="comment-date">{{ comment.created_at[:16] if comment.created_at else '' }}</span>
+                        </div>
+                        <p>{{ comment.content }}</p>
+                    </div>
+                </div>
+                {% endif %}
+                {% endfor %}
+
+                {% if not comments %}
+                <div class="empty-comments">Nenhum comentário ainda.</div>
+                {% endif %}
+            </div>
+
+            <form method="POST" action="{{ url_for('add_comment', ticket_id=ticket.id) }}" class="comment-form">
+                <div class="form-group">
+                    <input type="text" name="author" placeholder="Seu nome" class="form-input" value="Atendente">
+                </div>
+                <div class="form-group">
+                    <textarea name="content" rows="3" required placeholder="Adicione um comentário ou atualização..."
+                              class="form-input form-textarea"></textarea>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm">Comentar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- ── Side Panel ───────────────────────── -->
+    <div class="detail-side">
+
+        <!-- Client Info -->
+        <div class="side-card">
+            <h3 class="side-card-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/>
+                    <circle cx="12" cy="7" r="4"/>
+                </svg>
+                Cliente
+            </h3>
+            <div class="client-detail">
+                <div class="client-avatar-lg">{{ ticket.client_name[0] if ticket.client_name else '?' }}</div>
+                <div>
+                    <div class="client-name">{{ ticket.client_name or 'N/A' }}</div>
+                    <div class="client-company">{{ ticket.company or '' }}</div>
+                    {% if ticket.client_email %}
+                        <div class="client-contact">{{ ticket.client_email }}</div>
+                    {% endif %}
+                    {% if ticket.client_phone %}
+                        <div class="client-contact">{{ ticket.client_phone }}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Status Change -->
+        <div class="side-card">
+            <h3 class="side-card-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 014-4h14"/>
+                    <polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 01-4 4H3"/>
+                </svg>
+                Alterar Status
+            </h3>
+            <div class="status-buttons">
+                <button onclick="updateStatusDetail({{ ticket.id }}, 'a_fazer')"
+                        class="status-btn {% if ticket.status == 'a_fazer' %}active{% endif %} btn-danger">A Fazer</button>
+                <button onclick="updateStatusDetail({{ ticket.id }}, 'atendendo')"
+                        class="status-btn {% if ticket.status == 'atendendo' %}active{% endif %} btn-success">Atendendo</button>
+                <button onclick="updateStatusDetail({{ ticket.id }}, 'pausado')"
+                        class="status-btn {% if ticket.status == 'pausado' %}active{% endif %} btn-warning">Pausado</button>
+                <button onclick="updateStatusDetail({{ ticket.id }}, 'resolvido')"
+                        class="status-btn {% if ticket.status == 'resolvido' %}active{% endif %} btn-resolved">Resolvido</button>
+            </div>
+        </div>
+
+        <!-- Ticket Info -->
+        <div class="side-card">
+            <h3 class="side-card-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"/>
+                    <line x1="12" y1="8" x2="12" y2="12"/>
+                    <line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Informações
+            </h3>
+            <div class="info-list">
+                <div class="info-row">
+                    <span class="info-label">Responsável</span>
+                    <span class="info-value">
+                        {% if ticket.agent_name %}
+                            <span class="agent-pill">{{ ticket.agent_name }}</span>
+                        {% else %}
+                            <em style="color:var(--gray-400)">Não atribuído</em>
+                        {% endif %}
+                    </span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Categoria</span>
+                    <span class="info-value">{{ ticket.category or '—' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Origem</span>
+                    <span class="info-value">{{ 'E-mail' if ticket.origin == 'email' else 'Manual' }}</span>
+                </div>
+                <div class="info-row">
+                    <span class="info-label">Atualizado</span>
+                    <span class="info-value">{{ ticket.updated_at[:10] if ticket.updated_at else '—' }}</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transfer -->
+        <div class="side-card">
+            <h3 class="side-card-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 1l4 4-4 4"/>
+                    <path d="M3 11V9a4 4 0 014-4h14"/>
+                    <path d="M7 23l-4-4 4-4"/>
+                    <path d="M21 13v2a4 4 0 01-4 4H3"/>
+                </svg>
+                Transferir Chamado
+            </h3>
+            <form method="POST" action="{{ url_for('transferir_chamado', ticket_id=ticket.id) }}"
+                  class="transfer-form">
+                <div class="form-group" style="margin-bottom:10px">
+                    <label class="transfer-label">Atribuir para</label>
+                    <select name="new_agent" class="form-input form-input-sm" required>
+                        <option value="">Selecione um atendente...</option>
+                        {% for agent in agents %}
+                        <option value="{{ agent.login }}"
+                                {% if ticket.assigned_to == agent.login %}selected{% endif %}>
+                            {{ agent.name }}
+                            {% if ticket.assigned_to == agent.login %} (atual){% endif %}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="form-group" style="margin-bottom:10px">
+                    <label class="transfer-label">Motivo (opcional)</label>
+                    <input type="text" name="motivo" class="form-input form-input-sm"
+                           placeholder="Ex: Especialidade técnica necessária">
+                </div>
+                <button type="submit" class="btn btn-outline-green btn-full"
+                        onclick="return confirm('Confirma a transferência do chamado?')">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                        <path d="M5 12h14M12 5l7 7-7 7"/>
+                    </svg>
+                    Transferir
+                </button>
+            </form>
+        </div>
+
+        <!-- Actions -->
+        <div class="side-card">
+            <h3 class="side-card-title">Ações</h3>
+            <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-full">Voltar ao Dashboard</a>
+            <form method="POST" action="{{ url_for('deletar_chamado', ticket_id=ticket.id) }}"
+                  onsubmit="return confirm('Confirma a exclusão do chamado #{{ ticket.id }}?')">
+                <button type="submit" class="btn btn-danger-outline btn-full" style="margin-top:8px">
+                    Excluir Chamado
+                </button>
+            </form>
+        </div>
+
+    </div>
+</div>
+
+<script>
+function updateStatusDetail(ticketId, newStatus) {
+    fetch(`/chamado/${ticketId}/status`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({status: newStatus})
+    }).then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+    });
+}
+</script>
+{% endblock %}
