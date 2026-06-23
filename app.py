@@ -798,11 +798,23 @@ def api_tickets():
     return jsonify([dict(t) for t in tickets])
 
 
+def create_app():
+    init_db()
+    return app
+
+
 if __name__ == '__main__':
     init_db()
     if os.environ.get('WERKZEUG_RUN_MAIN') == 'true':
         t = threading.Thread(target=_email_polling_loop, daemon=True)
         t.start()
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_ENV', 'development') != 'production'
     print("\n  Sistema Helpdesk iniciado!")
-    print("  Acesse: http://127.0.0.1:5000\n")
-    app.run(debug=True)
+    print(f"  Acesse: http://127.0.0.1:{port}\n")
+    app.run(host='0.0.0.0', port=port, debug=debug)
+else:
+    # Called by gunicorn — initialize DB on first import
+    init_db()
+    _email_thread = threading.Thread(target=_email_polling_loop, daemon=True)
+    _email_thread.start()
