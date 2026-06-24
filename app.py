@@ -149,9 +149,9 @@ def init_db():
     cursor.execute('SELECT COUNT(*) FROM agents')
     if cursor.fetchone()[0] == 0:
         agents = [
-            ('Carlos Silva', 'carlos@intermidiasp.com.br', 'carlos.silva', generate_password_hash('123456'), 'admin'),
-            ('Ana Souza',    'ana@intermidiasp.com.br',    'ana.souza',    generate_password_hash('123456'), 'atendente'),
-            ('Pedro Martins','pedro@intermidiasp.com.br',  'pedro.m',      generate_password_hash('123456'), 'atendente'),
+            ('André Lima', 'andre@intermidiasp.com.br', 'André.lima', generate_password_hash('123456'), 'admin'),
+            ('Claudio Derengowski',    'claudio@intermidiasp.com.br',    'Claudio.Derengowski',    generate_password_hash('123456'), 'atendente'),
+            ('Felipe Evaristo','felipe@intermidiasp.com.br',  'Felipe.Evaristo',      generate_password_hash('123456'), 'atendente'),
         ]
         conn.executemany(
             'INSERT INTO agents (name, email, login, password_hash, role) VALUES (?, ?, ?, ?, ?)', agents
