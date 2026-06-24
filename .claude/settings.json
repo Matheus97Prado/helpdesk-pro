@@ -1,0 +1,17 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "Set-Location 'c:\\Users\\MatheusPradoIntermid\\OneDrive - ITN\\Documentos\\Prado\\Curso em Video\\Python\\Projeto_Intermidia\\helpdesk'; $status = git status --porcelain; if ($status) { git add -A; git commit -m \"auto: sync $(Get-Date -Format 'yyyy-MM-dd HH:mm')\"; git push origin master }",
+            "shell": "powershell",
+            "timeout": 60,
+            "statusMessage": "Sincronizando com GitHub..."
+          }
+        ]
+      }
+    ]
+  }
+}
