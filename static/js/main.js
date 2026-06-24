@@ -27,18 +27,123 @@
 })();
 
 // ============================================================
-// Status update (Kanban dropdown)
+// Kanban status change — requires description via modal
 // ============================================================
-function updateStatus(ticketId, newStatus) {
+const _STATUS_LABELS = {
+  'a_fazer': 'A Fazer', 'atendendo': 'Atendendo',
+  'pausado':  'Pausado', 'resolvido': 'Resolvido'
+};
+
+let _pendingChange = null; // { ticketId, newStatus, oldStatus, selectEl, dragCard, sourceCol, targetCol }
+
+function updateStatus(ticketId, newStatus, selectEl) {
+  const oldStatus = selectEl.dataset.prevValue || selectEl.value;
+  if (oldStatus === newStatus) return;
+
+  _pendingChange = { ticketId, newStatus, oldStatus, selectEl, dragCard: null };
+  _openKanbanModal(newStatus);
+}
+
+function _openKanbanModal(newStatus) {
+  const modal = document.getElementById('kanbanStatusModal');
+  if (!modal) return;
+  document.getElementById('ksmStatusLabel').textContent = _STATUS_LABELS[newStatus] || newStatus;
+  document.getElementById('ksmDescription').value = '';
+  document.getElementById('ksmDescCount').textContent = '0';
+  const resGroup = document.getElementById('ksmResolutionGroup');
+  if (resGroup) resGroup.style.display = newStatus === 'resolvido' ? 'block' : 'none';
+  const btn = document.getElementById('ksmConfirmBtn');
+  if (btn) { btn.disabled = false; btn.textContent = 'Confirmar'; }
+  modal.classList.add('open');
+  setTimeout(() => { const el = document.getElementById('ksmDescription'); if (el) el.focus(); }, 50);
+}
+
+function cancelKanbanModal() {
+  if (_pendingChange) {
+    // Revert select dropdown
+    if (_pendingChange.selectEl) {
+      _pendingChange.selectEl.value = _pendingChange.oldStatus;
+    }
+    // Return drag card to original column
+    if (_pendingChange.dragCard && _pendingChange.sourceCol) {
+      _pendingChange.sourceCol.appendChild(_pendingChange.dragCard);
+      _pendingChange.dragCard.dataset.status = _pendingChange.oldStatus;
+      const sel = _pendingChange.dragCard.querySelector('.status-select');
+      if (sel) { sel.value = _pendingChange.oldStatus; sel.dataset.prevValue = _pendingChange.oldStatus; }
+      updateColumnCounts();
+    }
+  }
+  _pendingChange = null;
+  const modal = document.getElementById('kanbanStatusModal');
+  if (modal) modal.classList.remove('open');
+}
+
+function submitKanbanStatusChange() {
+  if (!_pendingChange) return;
+
+  const description = (document.getElementById('ksmDescription').value || '').trim();
+  if (!description) {
+    const el = document.getElementById('ksmDescription');
+    el.style.borderColor = 'var(--danger)';
+    el.focus();
+    return;
+  }
+  document.getElementById('ksmDescription').style.borderColor = '';
+
+  const { ticketId, newStatus, selectEl, dragCard, targetCol } = _pendingChange;
+  const resolutionType = (document.getElementById('ksmResolutionType') || {}).value || '';
+
+  const payload = { status: newStatus, description };
+  if (newStatus === 'resolvido' && resolutionType) payload.resolution_type = resolutionType;
+
+  const btn = document.getElementById('ksmConfirmBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+
   fetch(`/chamado/${ticketId}/status`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ status: newStatus })
+    body: JSON.stringify(payload)
   })
   .then(r => r.json())
-  .then(data => { if (data.success) location.reload(); })
-  .catch(() => alert('Erro de conexão.'));
+  .then(data => {
+    if (data.success) {
+      // Update card state without full reload
+      if (dragCard && targetCol) {
+        dragCard.dataset.status = newStatus;
+        const sel = dragCard.querySelector('.status-select');
+        if (sel) { sel.value = newStatus; sel.dataset.prevValue = newStatus; }
+        targetCol.appendChild(dragCard);
+        updateColumnCounts();
+      } else if (selectEl) {
+        selectEl.dataset.prevValue = newStatus;
+      }
+      document.getElementById('kanbanStatusModal').classList.remove('open');
+      _pendingChange = null;
+      // Reload to show updated counts and system comment
+      location.reload();
+    } else {
+      alert(data.error || 'Erro ao atualizar status.');
+      cancelKanbanModal();
+    }
+  })
+  .catch(() => {
+    alert('Erro de conexão.');
+    cancelKanbanModal();
+  });
 }
+
+// Kanban description counter
+(function () {
+  const el = document.getElementById('ksmDescription');
+  if (!el) return;
+  el.addEventListener('input', function () {
+    const counter = document.getElementById('ksmDescCount');
+    if (counter) counter.textContent = this.value.length;
+  });
+  document.getElementById('kanbanStatusModal')?.addEventListener('click', function (e) {
+    if (e.target === this) cancelKanbanModal();
+  });
+})();
 
 // ============================================================
 // Priority preview (new ticket form)
@@ -67,7 +172,7 @@ function updateStatus(ticketId, newStatus) {
 })();
 
 // ============================================================
-// Drag & Drop Kanban
+// Drag & Drop Kanban — shows description modal before updating
 // ============================================================
 (function () {
   const cards   = document.querySelectorAll('.ticket-card');
@@ -95,35 +200,30 @@ function updateStatus(ticketId, newStatus) {
 
       const newStatus = col.id.replace('col-', '');
       const ticketId  = dragged.dataset.id;
+      const oldStatus = dragged.dataset.status;
 
-      if (dragged.dataset.status === newStatus) { col.appendChild(dragged); return; }
+      if (oldStatus === newStatus) { col.appendChild(dragged); dragged = null; return; }
 
-      fetch(`/chamado/${ticketId}/status`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status: newStatus })
-      })
-      .then(r => r.json())
-      .then(data => {
-        if (data.success) {
-          dragged.dataset.status = newStatus;
-          const sel = dragged.querySelector('.status-select');
-          if (sel) sel.value = newStatus;
-          col.appendChild(dragged);
-          updateColumnCounts();
-        }
-      });
+      const sourceCol = document.getElementById('col-' + oldStatus);
+      _pendingChange  = {
+        ticketId, newStatus, oldStatus,
+        selectEl:  dragged.querySelector('.status-select'),
+        dragCard:  dragged,
+        sourceCol, targetCol: col
+      };
+      dragged = null;
+      _openKanbanModal(newStatus);
     });
   });
-
-  function updateColumnCounts() {
-    document.querySelectorAll('.kanban-column').forEach(colEl => {
-      const count = colEl.querySelector('.column-count');
-      const body  = colEl.querySelector('.column-body');
-      if (count && body) count.textContent = body.querySelectorAll('.ticket-card').length;
-    });
-  }
 })();
+
+function updateColumnCounts() {
+  document.querySelectorAll('.kanban-column').forEach(colEl => {
+    const count = colEl.querySelector('.column-count');
+    const body  = colEl.querySelector('.column-body');
+    if (count && body) count.textContent = body.querySelectorAll('.ticket-card').length;
+  });
+}
 
 // ============================================================
 // Global search filter (client-side, instant)

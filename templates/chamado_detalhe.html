@@ -35,6 +35,11 @@
                             Via E-mail
                         </span>
                     {% endif %}
+                    {% if ticket.resolution_type %}
+                        <span class="category-tag" style="background:#d1fae5;color:#065f46">
+                            {{ 'Finalizado com Sucesso' if ticket.resolution_type == 'sucesso' else 'Era apenas uma Dúvida' }}
+                        </span>
+                    {% endif %}
                     <span class="detail-date">Aberto em {{ ticket.created_at[:10] if ticket.created_at else 'N/A' }}</span>
                 </div>
             </div>
@@ -89,15 +94,16 @@
                 {% endif %}
             </div>
 
-            <form method="POST" action="{{ url_for('add_comment', ticket_id=ticket.id) }}" class="comment-form">
+            <!-- Comment form — author from session, double-submit prevented -->
+            <form method="POST" action="{{ url_for('add_comment', ticket_id=ticket.id) }}"
+                  class="comment-form" id="commentForm">
+                <input type="hidden" name="author" value="{{ session.get('agent_name', 'Atendente') }}">
                 <div class="form-group">
-                    <input type="text" name="author" placeholder="Seu nome" class="form-input" value="teste">
-                </div>
-                <div class="form-group">
-                    <textarea name="content" rows="3" required placeholder="Adicione um comentário ou atualização..."
+                    <textarea name="content" id="commentContent" rows="3" required
+                              placeholder="Adicione um comentário ou atualização..."
                               class="form-input form-textarea"></textarea>
                 </div>
-                <button type="submit" class="btn btn-primary btn-sm">Comentar</button>
+                <button type="submit" class="btn btn-primary btn-sm" id="commentBtn">Comentar</button>
             </form>
         </div>
     </div>
@@ -129,7 +135,7 @@
             </div>
         </div>
 
-        <!-- Status Change -->
+        <!-- Status Change — opens modal -->
         <div class="side-card">
             <h3 class="side-card-title">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -139,13 +145,13 @@
                 Alterar Status
             </h3>
             <div class="status-buttons">
-                <button onclick="updateStatusDetail({{ ticket.id }}, 'a_fazer')"
+                <button onclick="openStatusModal('a_fazer')"
                         class="status-btn {% if ticket.status == 'a_fazer' %}active{% endif %} btn-danger">A Fazer</button>
-                <button onclick="updateStatusDetail({{ ticket.id }}, 'atendendo')"
+                <button onclick="openStatusModal('atendendo')"
                         class="status-btn {% if ticket.status == 'atendendo' %}active{% endif %} btn-success">Atendendo</button>
-                <button onclick="updateStatusDetail({{ ticket.id }}, 'pausado')"
+                <button onclick="openStatusModal('pausado')"
                         class="status-btn {% if ticket.status == 'pausado' %}active{% endif %} btn-warning">Pausado</button>
-                <button onclick="updateStatusDetail({{ ticket.id }}, 'resolvido')"
+                <button onclick="openStatusModal('resolvido')"
                         class="status-btn {% if ticket.status == 'resolvido' %}active{% endif %} btn-resolved">Resolvido</button>
             </div>
         </div>
@@ -179,6 +185,14 @@
                     <span class="info-label">Origem</span>
                     <span class="info-value">{{ 'E-mail' if ticket.origin == 'email' else 'Manual' }}</span>
                 </div>
+                {% if ticket.resolution_type %}
+                <div class="info-row">
+                    <span class="info-label">Resolução</span>
+                    <span class="info-value">
+                        {{ 'Sucesso' if ticket.resolution_type == 'sucesso' else 'Dúvida' }}
+                    </span>
+                </div>
+                {% endif %}
                 <div class="info-row">
                     <span class="info-label">Atualizado</span>
                     <span class="info-value">{{ ticket.updated_at[:10] if ticket.updated_at else '—' }}</span>
@@ -231,26 +245,146 @@
         <div class="side-card">
             <h3 class="side-card-title">Ações</h3>
             <a href="{{ url_for('dashboard') }}" class="btn btn-ghost btn-full">Voltar ao Dashboard</a>
+            {% if session.get('agent_role') == 'admin' %}
             <form method="POST" action="{{ url_for('deletar_chamado', ticket_id=ticket.id) }}"
                   onsubmit="return confirm('Confirma a exclusão do chamado #{{ ticket.id }}?')">
                 <button type="submit" class="btn btn-danger-outline btn-full" style="margin-top:8px">
                     Excluir Chamado
                 </button>
             </form>
+            {% endif %}
         </div>
 
     </div>
 </div>
 
+<!-- ── Modal: Alterar Status ───────────────── -->
+<div class="modal-overlay" id="statusModal">
+    <div class="modal-box" style="max-width:480px">
+        <div class="modal-header">
+            <h3>Alterar Status</h3>
+            <button class="modal-close" onclick="closeStatusModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="smNewStatus">
+
+            <div class="form-group">
+                <label class="form-label">
+                    Novo status:
+                    <strong id="smStatusLabel" style="color:var(--primary)"></strong>
+                </label>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">
+                    Descrição da alteração
+                    <span style="color:var(--danger)">*</span>
+                </label>
+                <textarea id="smDescription" class="form-input form-textarea" rows="3"
+                          maxlength="200"
+                          placeholder="Descreva o motivo da alteração (máx. 200 caracteres)..."></textarea>
+                <small class="form-hint" style="display:block;margin-top:4px;color:var(--gray-400)">
+                    <span id="smDescCount">0</span>/200 caracteres
+                </small>
+            </div>
+
+            <div class="form-group" id="smResolutionGroup" style="display:none">
+                <label class="form-label">
+                    Tipo de resolução
+                    <span style="color:var(--danger)">*</span>
+                </label>
+                <select id="smResolutionType" class="form-input">
+                    <option value="sucesso">Finalizado com Sucesso</option>
+                    <option value="duvida">Era apenas uma Dúvida</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" onclick="closeStatusModal()">Cancelar</button>
+            <button type="button" class="btn btn-primary" onclick="submitStatusChange()">Confirmar Alteração</button>
+        </div>
+    </div>
+</div>
+
 <script>
-function updateStatusDetail(ticketId, newStatus) {
-    fetch(`/chamado/${ticketId}/status`, {
+const _ticketId = {{ ticket.id }};
+const _statusLabels = {
+    'a_fazer': 'A Fazer', 'atendendo': 'Atendendo',
+    'pausado': 'Pausado', 'resolvido': 'Resolvido'
+};
+
+function openStatusModal(newStatus) {
+    document.getElementById('smNewStatus').value = newStatus;
+    document.getElementById('smStatusLabel').textContent = _statusLabels[newStatus] || newStatus;
+    document.getElementById('smDescription').value = '';
+    document.getElementById('smDescCount').textContent = '0';
+    const resGroup = document.getElementById('smResolutionGroup');
+    resGroup.style.display = newStatus === 'resolvido' ? 'block' : 'none';
+    document.getElementById('statusModal').classList.add('open');
+    setTimeout(() => document.getElementById('smDescription').focus(), 50);
+}
+
+function closeStatusModal() {
+    document.getElementById('statusModal').classList.remove('open');
+}
+
+document.getElementById('smDescription').addEventListener('input', function () {
+    document.getElementById('smDescCount').textContent = this.value.length;
+});
+
+function submitStatusChange() {
+    const newStatus = document.getElementById('smNewStatus').value;
+    const description = document.getElementById('smDescription').value.trim();
+    const resolutionType = document.getElementById('smResolutionType').value;
+
+    if (!description) {
+        document.getElementById('smDescription').focus();
+        document.getElementById('smDescription').style.borderColor = 'var(--danger)';
+        return;
+    }
+    document.getElementById('smDescription').style.borderColor = '';
+
+    const payload = { status: newStatus, description };
+    if (newStatus === 'resolvido') payload.resolution_type = resolutionType;
+
+    const btn = document.querySelector('#statusModal .btn-primary');
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+
+    fetch(`/chamado/${_ticketId}/status`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({status: newStatus})
-    }).then(r => r.json()).then(data => {
-        if (data.success) location.reload();
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Erro ao atualizar status.');
+            btn.disabled = false;
+            btn.textContent = 'Confirmar Alteração';
+        }
+    })
+    .catch(() => {
+        alert('Erro de conexão.');
+        btn.disabled = false;
+        btn.textContent = 'Confirmar Alteração';
     });
 }
+
+// Close modal on backdrop click
+document.getElementById('statusModal').addEventListener('click', function (e) {
+    if (e.target === this) closeStatusModal();
+});
+
+// Prevent comment double-submit
+document.getElementById('commentForm').addEventListener('submit', function () {
+    const btn = document.getElementById('commentBtn');
+    const content = document.getElementById('commentContent').value.trim();
+    if (!content) return false;
+    btn.disabled = true;
+    btn.textContent = 'Enviando...';
+});
 </script>
 {% endblock %}

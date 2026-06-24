@@ -8,12 +8,14 @@
 <div class="list-page">
     <div class="list-header">
         <h2>{{ agents|length }} atendente(s) cadastrado(s)</h2>
+        {% if session.get('agent_role') == 'admin' %}
         <a href="{{ url_for('novo_atendente') }}" class="btn btn-primary">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                 <path d="M12 5v14M5 12h14"/>
             </svg>
             Novo Atendente
         </a>
+        {% endif %}
     </div>
 
     <div class="agents-table-card">
@@ -58,12 +60,14 @@
                     </td>
                     <td>
                         <div class="action-buttons">
+                            {% if session.get('agent_role') == 'admin' %}
                             <!-- Toggle ativo/inativo -->
                             <form method="POST" action="{{ url_for('toggle_agent', agent_id=agent.id) }}"
                                   style="display:inline"
                                   onsubmit="return confirm('Confirmar alteração de status?')">
                                 <button type="submit" class="btn btn-ghost btn-xs"
-                                        title="{{ 'Desativar' if agent.active else 'Ativar' }}">
+                                        title="{{ 'Desativar' if agent.active else 'Ativar' }}"
+                                        {% if agent.id == session.get('agent_id') %}disabled title="Você não pode desativar sua própria conta"{% endif %}>
                                     {% if agent.active %}
                                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                                         <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
@@ -87,6 +91,9 @@
                                 </svg>
                                 Senha
                             </button>
+                            {% else %}
+                            <span style="color:var(--gray-400);font-size:12px">—</span>
+                            {% endif %}
                         </div>
                     </td>
                 </tr>

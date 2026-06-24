@@ -76,7 +76,9 @@
                 </div>
                 {% endif %}
                 <div class="ticket-actions">
-                    <select class="status-select" onchange="updateStatus({{ ticket.id }}, this.value, this)">
+                    <select class="status-select"
+                            data-prev-value="{{ ticket.status }}"
+                            onchange="updateStatus({{ ticket.id }}, this.value, this)">
                         <option value="a_fazer"   {% if ticket.status == 'a_fazer'   %}selected{% endif %}>A Fazer</option>
                         <option value="atendendo" {% if ticket.status == 'atendendo' %}selected{% endif %}>Atendendo</option>
                         <option value="pausado"   {% if ticket.status == 'pausado'   %}selected{% endif %}>Pausado</option>
@@ -93,4 +95,49 @@
     {% endfor %}
 
 </div>
+
+<!-- ── Modal: Alterar Status (Kanban) ──────── -->
+<div class="modal-overlay" id="kanbanStatusModal">
+    <div class="modal-box" style="max-width:480px">
+        <div class="modal-header">
+            <h3>Alterar Status</h3>
+            <button class="modal-close" onclick="cancelKanbanModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <div class="form-group">
+                <label class="form-label">
+                    Novo status:
+                    <strong id="ksmStatusLabel" style="color:var(--primary)"></strong>
+                </label>
+            </div>
+            <div class="form-group">
+                <label class="form-label">
+                    Descrição da alteração
+                    <span style="color:var(--danger)">*</span>
+                </label>
+                <textarea id="ksmDescription" class="form-input form-textarea" rows="3"
+                          maxlength="200"
+                          placeholder="Descreva o motivo da alteração (máx. 200 caracteres)..."></textarea>
+                <small class="form-hint" style="display:block;margin-top:4px;color:var(--gray-400)">
+                    <span id="ksmDescCount">0</span>/200 caracteres
+                </small>
+            </div>
+            <div class="form-group" id="ksmResolutionGroup" style="display:none">
+                <label class="form-label">
+                    Tipo de resolução
+                    <span style="color:var(--danger)">*</span>
+                </label>
+                <select id="ksmResolutionType" class="form-input">
+                    <option value="sucesso">Finalizado com Sucesso</option>
+                    <option value="duvida">Era apenas uma Dúvida</option>
+                </select>
+            </div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="btn btn-ghost" onclick="cancelKanbanModal()">Cancelar</button>
+            <button type="button" class="btn btn-primary" id="ksmConfirmBtn" onclick="submitKanbanStatusChange()">Confirmar</button>
+        </div>
+    </div>
+</div>
+
 {% endblock %}

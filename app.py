@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, redirect, url_for, jsonify, flash
-from werkzeug.security import generate_password_hash
+from flask import Flask, render_template, request, redirect, url_for, jsonify, flash, session
+from werkzeug.security import generate_password_hash, check_password_hash
 import sqlite3
 import imaplib
 import email as email_lib
@@ -10,10 +10,38 @@ import urllib.request
 import json
 from datetime import datetime
 import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from functools import wraps
 
 app = Flask(__name__)
 app.secret_key = 'helpdesk-secret-key-2024'
 DATABASE = os.path.join(os.path.dirname(__file__), 'helpdesk.db')
+
+
+# ─────────────────────────────────────────────
+# Auth decorators
+# ─────────────────────────────────────────────
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'agent_id' not in session:
+            return redirect(url_for('login', next=request.path))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'agent_id' not in session:
+            return redirect(url_for('login'))
+        if session.get('agent_role') != 'admin':
+            flash('Acesso restrito a administradores.', 'error')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated
 
 
 # ─────────────────────────────────────────────
@@ -100,6 +128,16 @@ def init_db():
         );
     ''')
 
+    # Safe migrations for new columns
+    for sql in [
+        "ALTER TABLE tickets ADD COLUMN resolution_type TEXT",
+    ]:
+        try:
+            conn.execute(sql)
+            conn.commit()
+        except Exception:
+            pass
+
     cursor = conn.cursor()
 
     # Seed email config row
@@ -162,7 +200,7 @@ def init_db():
 
 
 # ─────────────────────────────────────────────
-# Email helpers
+# Email helpers (IMAP receive)
 # ─────────────────────────────────────────────
 def _decode_header_value(value):
     if not value:
@@ -208,11 +246,6 @@ def _get_max_uid(mail) -> str:
 
 
 def _bootstrap_since_uid(config) -> str | None:
-    """
-    Connect to IMAP, get the current max UID and save it as the bookmark.
-    All emails with a lower or equal UID will be skipped by the poller.
-    Returns the UID string on success, None on failure.
-    """
     try:
         mail = imaplib.IMAP4_SSL(config['imap_host'], config['imap_port'])
         mail.login(config['email_user'], config['email_password'])
@@ -232,6 +265,69 @@ def _bootstrap_since_uid(config) -> str | None:
 
 
 # ─────────────────────────────────────────────
+# SMTP notification helper
+# ─────────────────────────────────────────────
+def send_status_notification(ticket_id, new_status, description, resolution_type=None):
+    """Send email to client when ticket status changes. Runs in background thread."""
+    try:
+        conn = get_db()
+        config = conn.execute('SELECT * FROM email_config WHERE id = 1').fetchone()
+        ticket = conn.execute('''
+            SELECT t.*, c.name as client_name, c.email as client_email
+            FROM tickets t LEFT JOIN clients c ON t.client_id = c.id
+            WHERE t.id = ?
+        ''', (ticket_id,)).fetchone()
+        conn.close()
+
+        if not config or not ticket:
+            return
+        if not ticket['client_email'] or not config['email_user'] or not config['email_password']:
+            return
+
+        status_labels = {
+            'a_fazer': 'A Fazer', 'atendendo': 'Em Atendimento',
+            'pausado': 'Pausado', 'resolvido': 'Resolvido'
+        }
+        resolution_labels = {
+            'sucesso': 'Finalizado com Sucesso',
+            'duvida': 'Era apenas uma Dúvida'
+        }
+
+        subject = f'[HelpDesk #{ticket["id"]}] Status atualizado: {status_labels.get(new_status, new_status)}'
+
+        lines = [
+            f'Olá, {ticket["client_name"]}!',
+            '',
+            f'O status do seu chamado foi atualizado.',
+            '',
+            f'Chamado: #{ticket["id"]} — {ticket["title"]}',
+            f'Novo Status: {status_labels.get(new_status, new_status)}',
+        ]
+        if resolution_type and resolution_type in resolution_labels:
+            lines.append(f'Resolução: {resolution_labels[resolution_type]}')
+        lines += ['', f'Atualização: {description}', '', 'Equipe de Suporte — HelpDesk Pro']
+        body = '\n'.join(lines)
+
+        msg = MIMEMultipart()
+        msg['From'] = config['email_user']
+        msg['To'] = ticket['client_email']
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain', 'utf-8'))
+
+        # Derive SMTP host from IMAP host
+        imap_host = config['imap_host'] or ''
+        smtp_host = imap_host.replace('imap.', 'smtp.') if 'imap.' in imap_host else imap_host
+
+        with smtplib.SMTP(smtp_host, 587) as server:
+            server.ehlo()
+            server.starttls()
+            server.login(config['email_user'], config['email_password'])
+            server.send_message(msg)
+    except Exception as e:
+        print(f'[Email notification] Erro ao enviar: {e}')
+
+
+# ─────────────────────────────────────────────
 # Email → Ticket checker
 # ─────────────────────────────────────────────
 def check_email_inbox():
@@ -247,7 +343,6 @@ def check_email_inbox():
         mail.login(config['email_user'], config['email_password'])
         mail.select('INBOX')
 
-        # If since_uid is not set yet, bootstrap it now (skip all existing emails)
         since_uid_val = config['since_uid']
         if since_uid_val is None:
             max_uid = _get_max_uid(mail)
@@ -266,11 +361,8 @@ def check_email_inbox():
 
         since_uid_int = int(since_uid_val)
 
-        # Fetch only UNSEEN messages (UID search)
         _, data = mail.uid('search', None, 'UNSEEN')
         all_unseen_uids = data[0].split()
-
-        # Filter: only UIDs strictly greater than our bookmark
         new_uids = [uid for uid in all_unseen_uids if int(uid) > since_uid_int]
 
         count = 0
@@ -289,7 +381,6 @@ def check_email_inbox():
             if not from_email:
                 continue
 
-            # ── Find or create client (no duplicates) ──────────
             client = conn.execute(
                 'SELECT id FROM clients WHERE LOWER(email) = LOWER(?)', (from_email,)
             ).fetchone()
@@ -303,7 +394,6 @@ def check_email_inbox():
                     'SELECT id FROM clients WHERE LOWER(email) = LOWER(?)', (from_email,)
                 ).fetchone()
 
-            # ── Deduplicate tickets: same subject + client in last 10 min ──
             existing = conn.execute(
                 "SELECT id FROM tickets WHERE client_id = ? AND title = ? "
                 "AND origin = 'email' AND created_at > datetime('now', '-10 minutes')",
@@ -322,7 +412,6 @@ def check_email_inbox():
             mail.uid('store', uid, '+FLAGS', '\\Seen')
             count += 1
 
-        # Update bookmark to max UID we have seen (processed or skipped)
         if new_uids:
             max_seen = max(int(uid) for uid in new_uids)
             if max_seen > since_uid_int:
@@ -345,7 +434,6 @@ def check_email_inbox():
         return {'success': False, 'count': 0, 'message': f'Erro: {e}'}
 
 
-# Background email polling thread
 _stop_email_thread = threading.Event()
 
 def _email_polling_loop():
@@ -363,24 +451,83 @@ def _email_polling_loop():
 
 
 # ─────────────────────────────────────────────
+# Routes — Auth
+# ─────────────────────────────────────────────
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'agent_id' in session:
+        return redirect(url_for('dashboard'))
+
+    if request.method == 'POST':
+        login_val = request.form.get('login', '').strip()
+        password  = request.form.get('password', '')
+
+        conn = get_db()
+        agent = conn.execute(
+            'SELECT * FROM agents WHERE (login = ? OR email = ?) AND active = 1',
+            (login_val, login_val)
+        ).fetchone()
+        conn.close()
+
+        if agent and check_password_hash(agent['password_hash'], password):
+            session['agent_id']    = agent['id']
+            session['agent_name']  = agent['name']
+            session['agent_login'] = agent['login']
+            session['agent_role']  = agent['role']
+            flash(f'Bem-vindo, {agent["name"]}!', 'success')
+            next_url = request.args.get('next', '')
+            return redirect(next_url if next_url and next_url.startswith('/') else url_for('dashboard'))
+
+        flash('Login ou senha incorretos.', 'error')
+
+    return render_template('login.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Você saiu do sistema.', 'success')
+    return redirect(url_for('login'))
+
+
+# ─────────────────────────────────────────────
 # Routes — Dashboard
 # ─────────────────────────────────────────────
 @app.route('/')
+@login_required
 def dashboard():
     conn = get_db()
     tickets_by_status = {}
+
+    is_admin = session.get('agent_role') == 'admin'
+    agent_login = session.get('agent_login')
+
     for status in ['a_fazer', 'atendendo', 'pausado', 'resolvido']:
-        tickets_by_status[status] = conn.execute('''
-            SELECT t.*, c.name as client_name, c.company,
-                   a.name as agent_name
-            FROM tickets t
-            LEFT JOIN clients c ON t.client_id = c.id
-            LEFT JOIN agents a ON t.assigned_to = a.login
-            WHERE t.status = ?
-            ORDER BY CASE t.priority
-                WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END,
-                t.created_at DESC
-        ''', (status,)).fetchall()
+        if is_admin:
+            tickets_by_status[status] = conn.execute('''
+                SELECT t.*, c.name as client_name, c.company,
+                       a.name as agent_name
+                FROM tickets t
+                LEFT JOIN clients c ON t.client_id = c.id
+                LEFT JOIN agents a ON t.assigned_to = a.login
+                WHERE t.status = ?
+                ORDER BY CASE t.priority
+                    WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END,
+                    t.created_at DESC
+            ''', (status,)).fetchall()
+        else:
+            # Atendentes veem todos os chamados, mas com filtro visual opcional
+            tickets_by_status[status] = conn.execute('''
+                SELECT t.*, c.name as client_name, c.company,
+                       a.name as agent_name
+                FROM tickets t
+                LEFT JOIN clients c ON t.client_id = c.id
+                LEFT JOIN agents a ON t.assigned_to = a.login
+                WHERE t.status = ?
+                ORDER BY CASE t.priority
+                    WHEN 'urgente' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END,
+                    t.created_at DESC
+            ''', (status,)).fetchall()
 
     stats = conn.execute('''
         SELECT COUNT(*) as total,
@@ -401,15 +548,14 @@ def dashboard():
 # Routes — Tickets
 # ─────────────────────────────────────────────
 @app.route('/novo-chamado', methods=['GET', 'POST'])
+@login_required
 def novo_chamado():
     conn = get_db()
     clients = conn.execute('SELECT * FROM clients WHERE active = 1 ORDER BY name').fetchall()
-    # Only registered agents from the team
     agents  = conn.execute("SELECT id, name, login, role FROM agents WHERE active = 1 ORDER BY name").fetchall()
 
     if request.method == 'POST':
         assigned = request.form.get('assigned_to', '').strip()
-        # Validate that assigned_to is a real agent login (if provided)
         if assigned:
             valid = conn.execute('SELECT id FROM agents WHERE login = ? AND active = 1', (assigned,)).fetchone()
             if not valid:
@@ -433,6 +579,7 @@ def novo_chamado():
 
 
 @app.route('/chamado/<int:ticket_id>')
+@login_required
 def chamado_detalhe(ticket_id):
     conn = get_db()
     ticket = conn.execute('''
@@ -458,33 +605,122 @@ def chamado_detalhe(ticket_id):
 
 
 @app.route('/chamado/<int:ticket_id>/status', methods=['POST'])
+@login_required
 def update_status(ticket_id):
-    data = request.get_json()
-    new_status = data.get('status')
+    if request.is_json:
+        data           = request.get_json()
+        new_status     = data.get('status', '')
+        description    = (data.get('description') or '').strip()
+        resolution_type = (data.get('resolution_type') or '').strip()
+    else:
+        new_status      = request.form.get('status', '')
+        description     = (request.form.get('description') or '').strip()
+        resolution_type = (request.form.get('resolution_type') or '').strip()
+
     if new_status not in ['a_fazer', 'atendendo', 'pausado', 'resolvido']:
-        return jsonify({'success': False}), 400
-    conn = get_db()
-    conn.execute('UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?',
-                 (new_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), ticket_id))
-    conn.commit()
-    conn.close()
-    return jsonify({'success': True})
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'Status inválido.'}), 400
+        flash('Status inválido.', 'error')
+        return redirect(url_for('chamado_detalhe', ticket_id=ticket_id))
 
+    if not description:
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'A descrição da alteração é obrigatória.'}), 400
+        flash('A descrição da alteração é obrigatória.', 'error')
+        return redirect(url_for('chamado_detalhe', ticket_id=ticket_id))
 
-@app.route('/chamado/<int:ticket_id>/comentar', methods=['POST'])
-def add_comment(ticket_id):
+    description = description[:200]
+
+    status_labels = {
+        'a_fazer': 'A Fazer', 'atendendo': 'Atendendo',
+        'pausado': 'Pausado', 'resolvido': 'Resolvido'
+    }
+    resolution_labels = {
+        'sucesso': 'Finalizado com Sucesso',
+        'duvida':  'Era apenas uma Dúvida'
+    }
+
     conn = get_db()
+    old_ticket = conn.execute('SELECT status FROM tickets WHERE id = ?', (ticket_id,)).fetchone()
+    if not old_ticket:
+        conn.close()
+        if request.is_json:
+            return jsonify({'success': False, 'error': 'Chamado não encontrado.'}), 404
+        flash('Chamado não encontrado.', 'error')
+        return redirect(url_for('dashboard'))
+
+    old_label = status_labels.get(old_ticket['status'], old_ticket['status'])
+    new_label = status_labels.get(new_status, new_status)
+    agent_name = session.get('agent_name', 'Sistema')
+
+    if new_status == 'resolvido' and resolution_type in ('sucesso', 'duvida'):
+        conn.execute(
+            'UPDATE tickets SET status = ?, resolution_type = ?, updated_at = ? WHERE id = ?',
+            (new_status, resolution_type, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), ticket_id)
+        )
+    else:
+        conn.execute(
+            'UPDATE tickets SET status = ?, updated_at = ? WHERE id = ?',
+            (new_status, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), ticket_id)
+        )
+
+    note = f'Status alterado: "{old_label}" → "{new_label}" por {agent_name}.'
+    if new_status == 'resolvido' and resolution_type in resolution_labels:
+        note += f' Resolução: {resolution_labels[resolution_type]}.'
+    note += f'\nMotivo: {description}'
+
     conn.execute(
-        'INSERT INTO ticket_comments (ticket_id, author, content) VALUES (?, ?, ?)',
-        (ticket_id, request.form.get('author', 'Atendente'), request.form['content'])
+        'INSERT INTO ticket_comments (ticket_id, author, content, is_system) VALUES (?, ?, ?, 1)',
+        (ticket_id, 'Sistema', note)
     )
     conn.commit()
     conn.close()
-    flash('Comentário adicionado!', 'success')
+
+    threading.Thread(
+        target=send_status_notification,
+        args=(ticket_id, new_status, description, resolution_type if new_status == 'resolvido' else None),
+        daemon=True
+    ).start()
+
+    if request.is_json:
+        return jsonify({'success': True})
+
+    flash(f'Status atualizado para "{new_label}"!', 'success')
+    return redirect(url_for('chamado_detalhe', ticket_id=ticket_id))
+
+
+@app.route('/chamado/<int:ticket_id>/comentar', methods=['POST'])
+@login_required
+def add_comment(ticket_id):
+    content = (request.form.get('content') or '').strip()
+    if not content:
+        flash('O comentário não pode estar vazio.', 'error')
+        return redirect(url_for('chamado_detalhe', ticket_id=ticket_id))
+
+    author = session.get('agent_name', 'Atendente')
+
+    conn = get_db()
+    # Prevent double-submit: ignore if identical comment was posted in the last 10 seconds
+    recent = conn.execute(
+        "SELECT id FROM ticket_comments WHERE ticket_id = ? AND author = ? AND content = ? "
+        "AND created_at > datetime('now', '-10 seconds')",
+        (ticket_id, author, content)
+    ).fetchone()
+
+    if not recent:
+        conn.execute(
+            'INSERT INTO ticket_comments (ticket_id, author, content) VALUES (?, ?, ?)',
+            (ticket_id, author, content)
+        )
+        conn.commit()
+        flash('Comentário adicionado!', 'success')
+
+    conn.close()
     return redirect(url_for('chamado_detalhe', ticket_id=ticket_id))
 
 
 @app.route('/chamado/<int:ticket_id>/transferir', methods=['POST'])
+@login_required
 def transferir_chamado(ticket_id):
     new_login = request.form.get('new_agent', '').strip()
     motivo    = request.form.get('motivo', '').strip()
@@ -503,13 +739,11 @@ def transferir_chamado(ticket_id):
     old_agent = conn.execute('SELECT name FROM agents WHERE login = ?', (old_login,)).fetchone()
     old_name  = old_agent['name'] if old_agent else old_login
 
-    # Update ticket
     conn.execute(
         'UPDATE tickets SET assigned_to = ?, updated_at = ? WHERE id = ?',
         (new_login, datetime.now().strftime('%Y-%m-%d %H:%M:%S'), ticket_id)
     )
 
-    # System comment logging the transfer
     note = f'Chamado transferido de {old_name} → {new_agent["name"]}.'
     if motivo:
         note += f' Motivo: {motivo}'
@@ -524,6 +758,7 @@ def transferir_chamado(ticket_id):
 
 
 @app.route('/chamado/<int:ticket_id>/deletar', methods=['POST'])
+@admin_required
 def deletar_chamado(ticket_id):
     conn = get_db()
     conn.execute('DELETE FROM ticket_comments WHERE ticket_id = ?', (ticket_id,))
@@ -538,6 +773,7 @@ def deletar_chamado(ticket_id):
 # Routes — Clients
 # ─────────────────────────────────────────────
 @app.route('/clientes')
+@login_required
 def clientes():
     conn = get_db()
     clients = conn.execute('''
@@ -551,6 +787,7 @@ def clientes():
 
 
 @app.route('/novo-cliente', methods=['GET', 'POST'])
+@login_required
 def novo_cliente():
     if request.method == 'POST':
         conn = get_db()
@@ -585,6 +822,7 @@ def novo_cliente():
 
 
 @app.route('/cliente/<int:client_id>/editar', methods=['GET', 'POST'])
+@login_required
 def editar_cliente(client_id):
     conn = get_db()
     client = conn.execute('SELECT * FROM clients WHERE id = ?', (client_id,)).fetchone()
@@ -628,9 +866,10 @@ def editar_cliente(client_id):
 
 
 # ─────────────────────────────────────────────
-# Routes — Agents
+# Routes — Agents (admin only)
 # ─────────────────────────────────────────────
 @app.route('/atendentes')
+@login_required
 def atendentes():
     conn = get_db()
     agents = conn.execute('''
@@ -643,6 +882,7 @@ def atendentes():
 
 
 @app.route('/novo-atendente', methods=['GET', 'POST'])
+@admin_required
 def novo_atendente():
     if request.method == 'POST':
         name     = request.form['name'].strip()
@@ -678,7 +918,13 @@ def novo_atendente():
 
 
 @app.route('/atendente/<int:agent_id>/toggle', methods=['POST'])
+@admin_required
 def toggle_agent(agent_id):
+    # Prevent admin from deactivating their own account
+    if agent_id == session.get('agent_id'):
+        flash('Você não pode desativar sua própria conta.', 'error')
+        return redirect(url_for('atendentes'))
+
     conn = get_db()
     agent = conn.execute('SELECT active FROM agents WHERE id = ?', (agent_id,)).fetchone()
     if agent:
@@ -691,6 +937,7 @@ def toggle_agent(agent_id):
 
 
 @app.route('/atendente/<int:agent_id>/resetar-senha', methods=['POST'])
+@admin_required
 def resetar_senha(agent_id):
     nova_senha = request.form.get('nova_senha', '').strip()
     if len(nova_senha) < 6:
@@ -706,9 +953,10 @@ def resetar_senha(agent_id):
 
 
 # ─────────────────────────────────────────────
-# Routes — Email config & checker
+# Routes — Email config & checker (admin only)
 # ─────────────────────────────────────────────
 @app.route('/config/email', methods=['GET', 'POST'])
+@admin_required
 def config_email():
     conn = get_db()
     if request.method == 'POST':
@@ -736,8 +984,6 @@ def config_email():
         ))
         conn.commit()
 
-        # Bootstrap UID bookmark when monitoring is first activated
-        # (or when credentials changed and re-activated)
         if new_active and (not was_active or not old_config['since_uid']):
             fresh = conn.execute('SELECT * FROM email_config WHERE id = 1').fetchone()
             conn.close()
@@ -758,6 +1004,7 @@ def config_email():
 
 
 @app.route('/verificar-emails', methods=['POST'])
+@admin_required
 def verificar_emails():
     result = check_email_inbox()
     if result['success']:
@@ -771,6 +1018,7 @@ def verificar_emails():
 # Routes — API
 # ─────────────────────────────────────────────
 @app.route('/api/cep/<cep>')
+@login_required
 def api_cep(cep):
     cep_digits = ''.join(c for c in cep if c.isdigit())[:8]
     if len(cep_digits) != 8:
@@ -785,6 +1033,7 @@ def api_cep(cep):
 
 
 @app.route('/api/tickets')
+@login_required
 def api_tickets():
     conn = get_db()
     tickets = conn.execute('''
@@ -814,7 +1063,6 @@ if __name__ == '__main__':
     print(f"  Acesse: http://127.0.0.1:{port}\n")
     app.run(host='0.0.0.0', port=port, debug=debug)
 else:
-    # Called by gunicorn — initialize DB on first import
     init_db()
     _email_thread = threading.Thread(target=_email_polling_loop, daemon=True)
     _email_thread.start()

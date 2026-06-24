@@ -107,7 +107,7 @@
             </a>
         </div>
 
-        <!-- Atendentes -->
+        <!-- Atendentes — visível para todos, mas ações restritas para admin -->
         <div class="nav-section">
             <div class="nav-section-label">EQUIPE</div>
             <a href="{{ url_for('atendentes') }}"
@@ -122,6 +122,7 @@
                 </span>
                 <span class="nav-label">Atendentes</span>
             </a>
+            {% if session.get('agent_role') == 'admin' %}
             <a href="{{ url_for('novo_atendente') }}"
                class="nav-item {% if request.endpoint == 'novo_atendente' %}active{% endif %}"
                title="Novo Atendente">
@@ -134,9 +135,11 @@
                 </span>
                 <span class="nav-label">Novo Atendente</span>
             </a>
+            {% endif %}
         </div>
 
-        <!-- Configurações -->
+        <!-- Configurações — somente admin -->
+        {% if session.get('agent_role') == 'admin' %}
         <div class="nav-section">
             <div class="nav-section-label">CONFIGURAÇÕES</div>
             <a href="{{ url_for('config_email') }}"
@@ -151,16 +154,28 @@
                 <span class="nav-label">E-mail → Ticket</span>
             </a>
         </div>
+        {% endif %}
 
     </nav>
 
     <!-- User Footer -->
     <div class="sidebar-footer">
-        <div class="user-avatar" title="Matheus Prado">M</div>
-        <div class="user-info">
-            <span class="user-name">Matheus Prado</span>
-            <span class="user-role">Administrador</span>
+        <div class="user-avatar" title="{{ session.get('agent_name', '') }}">
+            {{ session.get('agent_name', 'U')[0]|upper }}
         </div>
+        <div class="user-info">
+            <span class="user-name">{{ session.get('agent_name', 'Usuário') }}</span>
+            <span class="user-role">
+                {{ 'Administrador' if session.get('agent_role') == 'admin' else 'Atendente' }}
+            </span>
+        </div>
+        <a href="{{ url_for('logout') }}" class="logout-btn" title="Sair do sistema">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+                <polyline points="16 17 21 12 16 7"/>
+                <line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
+        </a>
     </div>
 </aside>
 
@@ -202,8 +217,8 @@
                     <path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 01-3.46 0"/>
                 </svg>
             </div>
-            <div class="topbar-user">
-                <div class="user-avatar-sm">M</div>
+            <div class="topbar-user" title="{{ session.get('agent_name', '') }}">
+                <div class="user-avatar-sm">{{ session.get('agent_name', 'U')[0]|upper }}</div>
             </div>
         </div>
     </header>
